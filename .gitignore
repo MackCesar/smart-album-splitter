@@ -1,0 +1,25 @@
+# PyCharm / JetBrains
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# Build / dist
+build/
+dist/
+*.egg-info/
+
+# Project outputs
+projects/*/output/
+
+# OS files
+.DS_Store
+Thumbs.db

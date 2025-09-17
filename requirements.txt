@@ -1,0 +1,8 @@
+yt-dlp
+ffmpeg-python
+mutagen
+typer
+pydantic
+pyyaml
+streamlit
+pytest
