@@ -1,0 +1,22 @@
+
+
+slug: demo-album
+source:
+  url: https://www.youtube.com/watch?v=PO_nZOsXyvg
+  prefer: [description, comments, transcript]
+  fallback_silence: true
+output:
+  codec: flac # alac | flac | mp3 | wav
+  filename_template: "{index:02d} - {title}.{ext}"
+  # cover: "video:00:10"       # optional: snapshot a frame for cover art
+metadata:
+  album: "Demo Album"
+  album_artist: "Unknown Artist"
+  year: 2025
+  genre: "Test"
+  comment: "Split by Smart Album Splitter"
+tracklist:
+  - title: "Track One"
+    start: "00:00:00"
+  - title: "Track Two"
+    start: "00:03:25"
