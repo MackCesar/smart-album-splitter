@@ -14,8 +14,11 @@ try:
 except Exception:
     YoutubeDL = None
 
-from smart_splitter.parsers.timestamps import parse_timestamps
-from smart_splitter.parsers.descriptions import extract_from_description
+from smart_splitter.parsers.description import extract_from_description
+from smart_splitter.parsers.comments import extract_from_comments
+from smart_splitter.parsers.transcript import extract_from_transcript
+from smart_splitter.parsers.silence import suggest_cuts_from_silence
+from smart_splitter.parsers.description import extract_from_description
 from smart_splitter.io.files import ensure_dir, read_yaml, write_json, write_csv
 from smart_splitter.audio.ffmpeg import (
     probe_duration,
@@ -184,32 +187,69 @@ def download_audio_and_info(p: Project, *, force: bool = False):
 
     print("✔ downloaded:", target)
 
+def _ytdlp_info(url: str) -> Dict:
+    if YoutubeDL is None:
+        return {}
+    with YoutubeDL({"quiet": True}) as ydl:
+        try:
+            return ydl.extract_info(url, download=False) or {}
+        except Exception:
+            return {}
+
 
 def resolve_tracklist(p: Project) -> List[Dict[str, str]]:
-    # 1) config-provided tracklist wins
+    # 1) project.yml beats everything
     cfg_tracks = p.cfg.get("tracklist")
     if cfg_tracks:
-        tracks = normalize_track_ends(cfg_tracks, total_duration=probe_duration(str(p.source_audio_path())) if p.source_audio_path().exists() else None)
-        return tracks
+        return normalize_track_ends(
+            cfg_tracks,
+            total_duration=probe_duration(str(p.source_audio_path())) if p.source_audio_path().exists() else None
+        )
 
-    # 2) attempt auto-extraction from description
-    desc = extract_description_via_ytdlp(p.url)
-    tracks = extract_from_description(desc)
+    tracks: List[Dict[str, str]] = []
+    info = _ytdlp_info(p.url)
 
-    if not tracks:
-        print("⚠ no timestamps found in description. (Comments/transcript parsing not implemented in MVP)")
-        # Optionally: fallback to silencedetect later
+    # 2) try sources in preferred order
+    for src in (p.preferred_sources or ["description", "comments", "transcript"]):
+        if src == "description":
+            desc = info.get("description") or extract_description_via_ytdlp(p.url)
+            if desc:
+                tracks = extract_from_description(desc)
 
-    total = None
-    if p.source_audio_path().exists():
-        total = probe_duration(str(p.source_audio_path()))
-    tracks = normalize_track_ends(tracks, total_duration=total)
-    return tracks
+        elif src == "comments":
+            comments = []
+            for c in info.get("comments", []) or []:
+                txt = c.get("text") or c.get("body") or ""
+                if txt:
+                    comments.append(txt)
+            if comments:
+                tracks = extract_from_comments(comments)
+
+        elif src == "transcript":
+            vtt_path = p.cfg.get("source", {}).get("vtt_path")
+            tr = extract_from_transcript(vtt_path=vtt_path) if vtt_path else []
+            if tr:
+                tracks = tr
+
+        elif src == "silence":
+            if p.source_audio_path().exists():
+                tracks = suggest_cuts_from_silence(str(p.source_audio_path()))
+
+        if tracks:
+            break
+
+    # 3) fallback to silence if nothing yet and allowed
+    if not tracks and p.fallback_silence and p.source_audio_path().exists():
+        tracks = suggest_cuts_from_silence(str(p.source_audio_path()))
+
+    total = probe_duration(str(p.source_audio_path())) if p.source_audio_path().exists() else None
+    return normalize_track_ends(tracks, total_duration=total)
 
 
 def __load_tracklist(p: Project) -> List[Dict[str, str]]:
-    if p.tracklist_json_path.exists():
-        return json.loads(p.tracklist_json_path.read_text(encoding="utf-8"))
+    path = p.tracklist_json_path()
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
     raise FileNotFoundError("tracklist.json not found. Run detect or run first.")
 
 
